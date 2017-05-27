@@ -65,14 +65,25 @@ struct Curryable<Functor, ReturnType, FirstArg, RestArgs...>
     Functor func;
     Curryable(Functor func) : func(func) {}
 
-    auto operator<<(FirstArg param) const
+    struct Op
     {
-        auto aux = func;
-        auto bound = [aux, param](RestArgs... args){ return aux(param, args...); };
-        return Curryable<decltype(bound), ReturnType, RestArgs...>(bound);
+        Functor func;
+        typename std::remove_reference<FirstArg>::type first;
+        Op(Functor func, FirstArg first) : func(func), first(first) {}
+
+	    ReturnType operator()(RestArgs... args) const
+        {
+            return func(first, args...);
+        }
+    };
+
+    auto operator<<(FirstArg param) const
+        -> Curryable<Op, ReturnType, RestArgs...>
+    {
+        return Op(func, param);
     }
 
-    auto operator()(FirstArg first, RestArgs... rest) const
+    ReturnType operator()(FirstArg first, RestArgs... rest) const
     {
         return func(first, rest...);
     }
@@ -84,44 +95,49 @@ struct Curryable<Functor, ReturnType>
     Functor func;
     Curryable(Functor func) : func(func) {}
 
-    auto operator()() const
+    ReturnType operator()() const
     {
         return func();
     }
 };
 
 template <typename Functor, typename ReturnType, typename... Args>
-auto curry_helper(Functor func, ReturnType (Functor::*)(Args...) const)
+detail::Curryable<Functor, ReturnType, Args...>
+    curry_helper(Functor func, ReturnType (Functor::*)(Args...) const)
 {
-    return detail::Curryable<Functor, ReturnType, Args...>(func);
+    return func;
 }
 
 template <typename Functor, typename ReturnType, typename... Args>
-auto curry_helper(Functor func, ReturnType (Functor::*)(Args...))
+detail::Curryable<Functor, ReturnType, Args...>
+    curry_helper(Functor func, ReturnType (Functor::*)(Args...))
 {
-    return detail::Curryable<Functor, ReturnType, Args...>(func);
+    return func;
 }
      
 template <typename Functor, typename ReturnType>
-auto curry_helper(Functor func, ReturnType (Functor::*)() const)
+detail::Curryable<Functor, ReturnType>
+    curry_helper(Functor func, ReturnType (Functor::*)() const)
 {
-    return detail::Curryable<Functor, ReturnType>(func);
+    return func;
 }
 
 template <typename Functor, typename ReturnType>
-auto curry_helper(Functor func, ReturnType (Functor::*)())
+detail::Curryable<Functor, ReturnType>
+    curry_helper(Functor func, ReturnType (Functor::*)())
 {
-    return detail::Curryable<Functor, ReturnType>(func);
+    return func;
 }
 
 template <typename Result>
-auto curry_all(Result result)
+Result curry_all(Result result)
 {
     return result;
 }
 
 template <typename Functor, typename FirstArg, typename... RestArgs>
 auto curry_all(Functor func, FirstArg arg, RestArgs... rest)
+    -> decltype(curry_all(func << arg, rest...))
 {
     return curry_all(func << arg, rest...);
 }
@@ -130,20 +146,23 @@ auto curry_all(Functor func, FirstArg arg, RestArgs... rest)
  
 template <typename Functor>
 auto curry(Functor func)
+    -> decltype(curry_helper(func, &Functor::operator()))
 {
     return curry_helper(func, &Functor::operator());
 }
 
 template <typename ReturnType, typename... Args>
 auto curry(ReturnType (*func)(Args...))
+    -> detail::Curryable<decltype(func), ReturnType, Args...>
 {
-    return detail::Curryable<decltype(func), ReturnType, Args...>(func);
+    return func;
 }
 
-template <typename Functor, typename... Args>
-auto curry(Functor func, Args... args)
+template <typename Functor, typename FirstArg, typename... Args>
+auto curry(Functor func, FirstArg first, Args... args)
+    -> decltype(detail::curry_all(curry(func), first, args...))
 {
-    return detail::curry_all(curry(func), args...);
+    return detail::curry_all(curry(func), first, args...);
 }
  
 namespace detail
@@ -156,15 +175,26 @@ struct Applicable<Functor, ReturnType, FirstArg, RestArgs...>
 {
     Functor func;
     Applicable(Functor func) : func(func) {}
-         
-    auto operator<<(FirstArg param) const
+
+    struct Op
     {
-        auto aux = func;
-        auto bound = [aux, param](RestArgs... args){ return aux(param, args...); };
-        return Applicable<decltype(bound), ReturnType, RestArgs...>(bound);
+        Functor func;
+        typename std::remove_reference<FirstArg>::type first;
+        Op(Functor func, FirstArg first) : func(func), first(first) {}
+
+        ReturnType operator()(RestArgs... args) const
+        {
+            return func(first, args...);
+        }
+    };
+         
+    Applicable<Op, ReturnType, RestArgs...> operator<<(FirstArg param) const
+    {
+        return Op(func, param);
     }
              
     auto operator()(FirstArg first, RestArgs... rest) const
+        -> decltype(func(first, rest...))
     {
         return func(first, rest...);
     }
@@ -176,43 +206,46 @@ struct Applicable<Functor, ReturnType, FirstArg>
     Functor func;
     Applicable(Functor func) : func(func) {}
          
-    auto operator<<(FirstArg param) const
+    ReturnType operator<<(FirstArg param) const
     {
         return func(param);
     }
          
-    auto operator()(FirstArg first) const
+    ReturnType operator()(FirstArg first) const
     {
         return func(first);
     }
 };
 
 template <typename Functor, typename ReturnType>
-auto apply_helper(Functor func, ReturnType (Functor::*)() const)
+ReturnType apply_helper(Functor func, ReturnType (Functor::*)() const)
 {
     return func();
 }
 
 template <typename Functor, typename ReturnType, typename... Args>
-auto apply_helper(Functor func, ReturnType (Functor::*)(Args...) const)
+detail::Applicable<Functor, ReturnType, Args...>
+    apply_helper(Functor func, ReturnType (Functor::*)(Args...) const)
 {
-    return detail::Applicable<Functor, ReturnType, Args...>(func);
+    return func;
 }
 
 template <typename Functor, typename ReturnType, typename... Args>
-auto apply_helper(Functor func, ReturnType (Functor::*)(Args...))
+detail::Applicable<Functor, ReturnType, Args...>
+    apply_helper(Functor func, ReturnType (Functor::*)(Args...))
 {
-    return detail::Applicable<Functor, ReturnType, Args...>(func);
+    return func;
 }
 
 template <typename Result>
-auto apply_all(Result result)
+Result apply_all(Result result)
 {
     return result;
 }
 
 template <typename Functor, typename FirstArg, typename... RestArgs>
 auto apply_all(Functor func, FirstArg arg, RestArgs... rest)
+    -> decltype(apply_all(func << arg, rest...))
 {
     return apply_all(func << arg, rest...);
 }
@@ -221,20 +254,23 @@ auto apply_all(Functor func, FirstArg arg, RestArgs... rest)
  
 template <typename Functor>
 auto apply(Functor func)
+    -> decltype(detail::apply_helper(func, &Functor::operator()))
 {
     return detail::apply_helper(func, &Functor::operator());
 }
 
 template <typename ReturnType, typename... Args>
 auto apply(ReturnType (*func)(Args...))
+    -> detail::Applicable<decltype(func), ReturnType, Args...>
 {
-    return detail::Applicable<decltype(func), ReturnType, Args...>(func);
+    return func;
 }
 
-template <typename Functor, typename... Args>
-auto apply(Functor func, Args... args)
+template <typename Functor, typename FirstArg, typename... Args>
+auto apply(Functor func, FirstArg first, Args... args)
+    -> decltype(detail::apply_all(apply(func), first, args...))
 {
-    return detail::apply_all(apply(func), args...);
+    return detail::apply_all(apply(func), first, args...);
 }
 
 #define NAMED_PARAM(name, param_type) \
