@@ -1,9 +1,232 @@
 #include <type_traits>
 #include <utility>
+#include <iostream>
+#include <typeinfo>
  
 using namespace std;
- 
- 
+
+template <typename... Arg> struct Variadic {};
+
+template <template <typename... Args> class Container, typename Left, typename Right>
+struct MergeInto
+{
+    template <template <typename... FirstArgs> class First,
+              template <typename... SecondArgs> class Second,
+              typename... AuxLeft,
+              typename... AuxRight>
+    static Container<AuxLeft..., AuxRight...> merge_helper(First<AuxLeft...>*, Second<AuxRight...>*);
+
+    using type = decltype(merge_helper((Left*)nullptr, (Right*)nullptr));
+};
+
+template <template <typename... Args> class Applicable, typename... AppliedArgs>
+struct ApplyInto
+{
+    using type = Applicable<AppliedArgs...>;
+};
+
+template <template <typename... Args> class Container, typename VariadicType, typename... Initial>
+struct RepackInto
+{
+    template <template <typename... SourceArgs> class Source,
+              typename... ActualSourceArgs>
+    static Container<Initial..., ActualSourceArgs...> helper(Source<ActualSourceArgs...>*);
+    using type = decltype(helper((VariadicType*)nullptr));
+};
+
+template <typename List>
+struct Size
+{
+    template <template <typename...> class Container, typename... Args>
+    static constexpr int size(Container<Args...>*) { return sizeof...(Args); }
+    static constexpr const int value = size((List*)nullptr);
+};
+
+
+template <bool value, typename First, typename Second>
+struct Choose;
+template <typename First, typename Second>
+struct Choose<false, First, Second> { using type = Second; };
+template <typename First, typename Second>
+struct Choose<true, First, Second> { using type = First; };
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate,
+          typename... Args>
+struct TakeWhile;
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate>
+struct TakeWhile<Container, Predicate>
+{
+    using type = Container<>;
+};
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate,
+          typename Head,
+          typename... Tail>
+struct TakeWhile<Container, Predicate, Head, Tail...>
+{
+    using type = typename Choose<
+        Predicate<Head>::value,
+        typename MergeInto<Container, Container<Head>, typename TakeWhile<Container, Predicate, Tail...>::type>::type,
+        Container<>
+        >::type;
+};
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate,
+          typename... Args>
+struct DropWhile;
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate>
+struct DropWhile<Container, Predicate>
+{
+    using type = Container<>;
+};
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate,
+          typename Head,
+          typename... Tail>
+struct DropWhile<Container, Predicate, Head, Tail...>
+{
+    using type = typename Choose<
+        Predicate<Head>::value,
+        typename MergeInto<Container, Container<>, typename DropWhile<Container, Predicate, Tail...>::type>::type,
+        Container<Head, Tail...>
+        >::type;
+};
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate,
+          typename... Args>
+struct Filter;
+
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate>
+struct Filter<Container, Predicate>
+{
+    using type = Container<>;
+};
+template <template <typename... Args> class Container,
+          template <typename T> class Predicate,
+          typename Head,
+          typename... Tail>
+struct Filter<Container, Predicate, Head, Tail...>
+{
+    using type = 
+        typename MergeInto<
+            Container,
+            typename Choose<Predicate<Head>::value, Container<Head>, Container<>>::type,
+            typename Filter<Container, Predicate, Tail...>::type
+        >::type;
+};
+
+template <template <typename... Args> class Container,
+          template <typename T> class Func,
+          typename... Args>
+struct Transform;
+
+template <template <typename... Args> class Container,
+          template <typename T> class Func>
+struct Transform<Container, Func>
+{
+    using type = Container<>;
+};
+template <template <typename... Args> class Container,
+          template <typename T> class Func,
+          typename Head,
+          typename... Tail>
+struct Transform<Container, Func, Head, Tail...>
+{
+    using type = 
+        typename MergeInto<
+            Container,
+            Container<typename Func<Head>::type>,
+            typename Filter<Container, Func, Tail...>::type
+        >::type;
+};
+
+
+template <typename Head, typename... Tail> struct VHead { using type = Head; };
+template <typename List> struct Head { using type = typename RepackInto<VHead, List>::type; };
+
+template <template <typename... ContainerArgs> class Container, typename... Tail>
+struct VTailInto;
+
+template <template <typename... ContainerArgs> class Container, typename Head, typename... Tail>
+struct VTailInto<Container, Head, Tail...>
+{
+    using type = Container<Tail...>;
+};
+template <template <typename... ContainerArgs> class Container>
+struct VTailInto<Container>
+{
+    using type = Container<>;
+};
+
+template <template <typename... ContainerArgs> class Container, typename List>
+struct TailInto
+{
+    template <template <typename...> class InputContainer, typename... Elems>
+    static typename VTailInto<Container, Elems...>::type helper(InputContainer<Elems...>*);
+    
+    using type = decltype(helper((List*)nullptr));
+};
+
+template <typename Functor, typename ReturnType, typename Middle, typename... LeftArgs>
+struct ApplyByTypeLeft
+{
+    using Func = Functor;
+    using Applied = Middle;
+    Functor func;
+    Middle bound;
+    ApplyByTypeLeft(Functor func, Middle bound) : func(func), bound(bound) {}
+
+    template <typename... Args>
+    ReturnType operator()(LeftArgs... left, Args... right) const
+    {
+        func(left..., bound, right...);
+    }
+};
+
+template <typename LeftApplied, typename ReturnType, typename... AfterArgs>
+struct ApplyByTypeRight
+{
+    using Functor = typename LeftApplied::Func;
+    using Applied = typename LeftApplied::Applied;
+    LeftApplied applied;
+    explicit ApplyByTypeRight(Functor func, Applied arg) : applied(func, arg) {}
+
+    ReturnType operator()(AfterArgs... args) const
+    {
+        return applied(args...);
+    }
+};
+
+template <typename Functor, typename ReturnType, typename TypeApplied, typename... Args>
+struct ApplyByType
+{
+    template <typename... Types> struct List {};
+
+    template <typename T>
+    struct is_different
+    {
+        static constexpr const bool value = not std::is_convertible<TypeApplied, T>::value;
+    };
+
+    using left_args = typename TakeWhile<List, is_different, Args...>::type;
+    using right_args_aux = typename DropWhile<List, is_different, Args...>::type;
+    using right_args = typename TailInto<List, right_args_aux>::type;
+    using applied_args = typename MergeInto<List, left_args, right_args>::type;
+    using left_applied = typename RepackInto<ApplyByTypeLeft, left_args, Functor, ReturnType, TypeApplied>::type;
+    static_assert(Size<applied_args>::value < sizeof...(Args));
+
+    using type = typename RepackInto<ApplyByTypeRight, applied_args, left_applied, ReturnType>::type;
+};
+
 template <typename F>    
 struct function_traits : function_traits<decltype(&F::operator())>
 {
@@ -191,6 +414,17 @@ struct Applicable<Functor, ReturnType, FirstArg, RestArgs...>
     Applicable<Op, ReturnType, RestArgs...> operator<<(FirstArg param) const
     {
         return Op(func, param);
+    }
+
+    template <typename SomeArgType>
+    auto operator<<(SomeArgType param) const
+        -> typename RepackInto<
+            Applicable,
+            typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::applied_args,
+            typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::type,
+            ReturnType>::type 
+    {
+        return typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::type(func, param);
     }
              
     auto operator()(FirstArg first, RestArgs... rest) const
