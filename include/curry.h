@@ -1,3 +1,5 @@
+#pragma once
+
 #include <type_traits>
 #include <utility>
 #include <iostream>
@@ -188,7 +190,7 @@ struct ApplyByTypeLeft
     template <typename... Args>
     ReturnType operator()(LeftArgs... left, Args... right) const
     {
-        func(left..., bound, right...);
+        return func(left..., bound, right...);
     }
 };
 
@@ -222,7 +224,7 @@ struct ApplyByType
     using right_args = typename TailInto<List, right_args_aux>::type;
     using applied_args = typename MergeInto<List, left_args, right_args>::type;
     using left_applied = typename RepackInto<ApplyByTypeLeft, left_args, Functor, ReturnType, TypeApplied>::type;
-    static_assert(Size<applied_args>::value < sizeof...(Args));
+    static_assert(Size<applied_args>::value < sizeof...(Args), "No parameter has this type");
 
     using type = typename RepackInto<ApplyByTypeRight, applied_args, left_applied, ReturnType>::type;
 };
@@ -270,7 +272,7 @@ template <typename Functor>
 struct has_nonambigous_call_operator
 {
     template <typename F>
-    static decltype(&F::operator()) test(F* f);
+    static decltype(&F::operator()) test(F*);
          
     static char test(...);
              
@@ -506,11 +508,4 @@ auto apply(Functor func, FirstArg first, Args... args)
 {
     return detail::apply_all(apply(func), first, args...);
 }
-
-#define NAMED_PARAM(name, param_type) \
-    struct name { \
-        param_type param; \
-        explicit name(param_type param) : param(param) {} \
-        operator param_type() const  { return param; } \
-    }
  
