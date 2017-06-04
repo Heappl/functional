@@ -27,8 +27,7 @@ std::string test3(SomeText text1, OtherText text2, CharCarrier text3)
 
 struct Functor { bool operator()(int x, float y, char z) const { std::cout << x << " " << y << " " << z << std::endl; return (x < y) == z; } };
  
-
- struct Test { int operator[](int){ return 0; } };
+struct Test { int operator[](int){ return 0; } };
  
 int main()
 {
