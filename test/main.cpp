@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <curry.h>
+#include <apply.h>
 #include <named_param.h>
 
 int test(int x, float arg, const std::string& y) {
@@ -31,6 +32,7 @@ struct Functor { bool operator()(int x, float y, char z) const { std::cout << x 
  
 int main()
 {
+    using namespace imp;
     auto t0 = apply(test) << "out of order";
     t0(1, 1.9);
 
