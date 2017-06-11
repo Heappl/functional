@@ -1,60 +1,47 @@
 #pragma once
 
 #include "type_algorithm.h"
+#include "type_list.h"
 
 namespace imp
 {
 namespace detail
 {
-template <typename Functor, typename ReturnType, typename Middle, typename... LeftArgs>
-struct ApplyByTypeLeft
-{
-    using Func = Functor;
-    using Applied = Middle;
-    Functor func;
-    Middle bound;
-    ApplyByTypeLeft(Functor func, Middle bound) : func(func), bound(bound) {}
-
-    template <typename... Args>
-    ReturnType operator()(LeftArgs... left, Args... right) const
-    {
-        return func(left..., bound, right...);
-    }
-};
-
-template <typename LeftApplied, typename ReturnType, typename... AfterArgs>
-struct ApplyByTypeRight
-{
-    using Functor = typename LeftApplied::Func;
-    using Applied = typename LeftApplied::Applied;
-    LeftApplied applied;
-    explicit ApplyByTypeRight(Functor func, Applied arg) : applied(func, arg) {}
-
-    ReturnType operator()(AfterArgs... args) const
-    {
-        return applied(args...);
-    }
-};
 
 template <typename Functor, typename ReturnType, typename TypeApplied, typename... Args>
 struct ApplyByType
 {
-    template <typename... Types> struct List {};
-
     template <typename T>
     struct is_different
     {
         static constexpr const bool value = not std::is_convertible<TypeApplied, T>::value;
     };
+  
+    using all_args = List<Args...>;
+    using left_args = typename TakeWhile<List, is_different, all_args>::type;
+    using right_args = typename Tail<List,
+        typename DropWhile<List, is_different, all_args>::type>::type;
+    using remaining_args = typename MergeInto<List, left_args, right_args>::type;
 
-    using left_args = typename imp::TakeWhile<List, is_different, Args...>::type;
-    using right_args_aux = typename imp::DropWhile<List, is_different, Args...>::type;
-    using right_args = typename imp::TailInto<List, right_args_aux>::type;
-    using applied_args = typename imp::MergeInto<List, left_args, right_args>::type;
-    using left_applied = typename imp::RepackInto<ApplyByTypeLeft, left_args, Functor, ReturnType, TypeApplied>::type;
-    static_assert(imp::Size<applied_args>::value < sizeof...(Args), "No parameter has this type");
-
-    using type = typename imp::RepackInto<ApplyByTypeRight, applied_args, left_applied, ReturnType>::type;
+    template <typename... Left>
+    struct Op
+    {
+        template <typename... Right>
+        struct OpInception
+        {
+            Functor func;
+            TypeApplied bound;
+            OpInception(Functor func, TypeApplied bound) : func(func), bound(bound) {}
+            ReturnType operator()(Left... left, Right... right) const
+            {
+                return func(left..., bound, right...);
+            }
+        };
+        using type = typename RepackInto<OpInception, right_args>::type;
+    };
+    using type = typename RepackInto<Op, left_args>::type::type;
+    static_assert(Size<remaining_args>::value < sizeof...(Args),
+                 "No parameter has this type");
 };
 
 template <typename Functor, typename ReturnType, typename... Args>
@@ -85,11 +72,11 @@ struct Applicable<Functor, ReturnType, FirstArg, RestArgs...>
 
     template <typename SomeArgType>
     auto operator<<(SomeArgType param) const
-        -> typename imp::RepackInto<
+        -> typename RepackInto<
             Applicable,
-            typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::applied_args,
+            typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::remaining_args,
             typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::type,
-            ReturnType>::type 
+            ReturnType>::type
     {
         return typename ApplyByType<Functor, ReturnType, SomeArgType, FirstArg, RestArgs...>::type(func, param);
     }

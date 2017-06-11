@@ -1,17 +1,18 @@
 #pragma once
 
 #include "variadic_algorithm.h"
+#include "type_if.h"
 
 namespace imp
 {
 
 //take variadic types from two containers
 //and merge them in the given container
-template <template <typename... Args> class Container, typename Left, typename Right>
+template <template <typename...> class Container, typename Left, typename Right>
 struct MergeInto
 {
-    template <template <typename... FirstArgs> class First,
-              template <typename... SecondArgs> class Second,
+    template <template <typename...> class First,
+              template <typename...> class Second,
               typename... AuxLeft,
               typename... AuxRight>
     static Container<AuxLeft..., AuxRight...> merge_helper(First<AuxLeft...>*, Second<AuxRight...>*);
@@ -20,12 +21,11 @@ struct MergeInto
 };
 
 //take variadic types from some container and repack it into another
-template <template <typename... Args> class Container, typename VariadicType, typename... Initial>
+template <template <typename...> class Container, typename VariadicType, typename... Initial>
 struct RepackInto
 {
-    template <template <typename... SourceArgs> class Source,
-              typename... ActualSourceArgs>
-    static Container<Initial..., ActualSourceArgs...> helper(Source<ActualSourceArgs...>*);
+    template <template <typename...> class Source, typename... Args>
+    static Container<Initial..., Args...> helper(Source<Args...>*);
     using type = decltype(helper((VariadicType*)nullptr));
 };
 
@@ -38,121 +38,71 @@ struct Size
     static constexpr const int value = size((List*)nullptr);
 };
 
-//if statement, choose type from two given based on given constexpr boolean value
-template <bool value, typename First, typename Second>
-struct If;
-template <typename First, typename Second>
-struct If<false, First, Second> { using type = Second; };
-template <typename First, typename Second>
-struct If<true, First, Second> { using type = First; };
+//Apply algorithm on list and pack the results into container with initial types
+template <template <typename...> class Container,
+          template <typename> class Func,
+          template <template <typename...> class,
+                    template <typename> class,
+                    typename...> class Algorithm,
+          typename List,
+          typename... Initial>
+struct ApplyAlgorithm
+{
+    template <typename... Args>
+    struct Aux
+    {
+        using taken = typename Algorithm<Container, Func, Args...>::type;
+        using type = typename RepackInto<Container, taken, Initial...>::type;
+    };
+    using type = typename RepackInto<Aux, List>::type::type;
+};
 
-//Take variadic types from templated type until predicate template will give true,
+//Take elements from list till predicate is true
 //and pack it into given container templated type
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate,
-          typename... Args>
-struct TakeWhile;
-
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate>
-struct TakeWhile<Container, Predicate>
+template <template <typename...> class Container,
+          template <typename> class Predicate,
+          typename List,
+          typename... Initial>
+struct TakeWhile
 {
-    using type = Container<>;
+    using type = typename ApplyAlgorithm<
+        Container, Predicate, variadic_algorithm::TakeWhileInto, List, Initial...>::type;
 };
 
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate,
-          typename Head,
-          typename... Tail>
-struct TakeWhile<Container, Predicate, Head, Tail...>
-{
-    using type = typename If<
-        Predicate<Head>::value,
-        typename MergeInto<Container, Container<Head>, typename TakeWhile<Container, Predicate, Tail...>::type>::type,
-        Container<>
-        >::type;
-};
-
-//Take from variadic types from templated, dropping all before predicate template will give true,
+//Drop elements from list till predicate is true
 //and pack it into given container templated type
-
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate,
-          typename... Args>
-struct DropWhile;
-
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate>
-struct DropWhile<Container, Predicate>
+template <template <typename...> class Container,
+          template <typename> class Predicate,
+          typename List,
+          typename... Initial>
+struct DropWhile
 {
-    using type = Container<>;
-};
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate,
-          typename Head,
-          typename... Tail>
-struct DropWhile<Container, Predicate, Head, Tail...>
-{
-    using type = typename If<
-        Predicate<Head>::value,
-        typename MergeInto<Container, Container<>, typename DropWhile<Container, Predicate, Tail...>::type>::type,
-        Container<Head, Tail...>
-        >::type;
+    using type = typename ApplyAlgorithm<
+        Container, Predicate, variadic_algorithm::DropWhileInto, List, Initial...>::type;
 };
 
-//Filter variadic types from given templated type and repack it into new container
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate,
-          typename... Args>
-struct Filter;
-
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate>
-struct Filter<Container, Predicate>
+//Filter list of types and repack it into new container
+template <template <typename...> class Container,
+          template <typename> class Predicate,
+          typename List,
+          typename... Initial>
+struct Filter
 {
-    using type = Container<>;
-};
-template <template <typename... Args> class Container,
-          template <typename T> class Predicate,
-          typename Head,
-          typename... Tail>
-struct Filter<Container, Predicate, Head, Tail...>
-{
-    using type = 
-        typename MergeInto<
-            Container,
-            typename If<Predicate<Head>::value, Container<Head>, Container<>>::type,
-            typename Filter<Container, Predicate, Tail...>::type
-        >::type;
+    using type = typename ApplyAlgorithm<
+        Container, Predicate, variadic_algorithm::FilterInto, List, Initial...>::type;
 };
 
-//Transform all types from given templated type, by applying templated functor,
-//(applying means getting `typename Func<Elem>::type`)
-//and put them into new containers
-template <template <typename... Args> class Container,
-          template <typename T> class Func,
-          typename... Args>
-struct Transform;
+// Transform list of types and repack it into new container
+template <template <typename...> class Container,
+          template <typename> class Predicate,
+          typename List,
+          typename... Initial>
+struct Transform
+{
+    using type = typename ApplyAlgorithm<
+        Container, Predicate, variadic_algorithm::TransformInto, List, Initial...>::type;
+};
 
-template <template <typename... Args> class Container,
-          template <typename T> class Func>
-struct Transform<Container, Func>
-{
-    using type = Container<>;
-};
-template <template <typename... Args> class Container,
-          template <typename T> class Func,
-          typename Head,
-          typename... Tail>
-struct Transform<Container, Func, Head, Tail...>
-{
-    using type = 
-        typename MergeInto<
-            Container,
-            Container<typename Func<Head>::type>,
-            typename Filter<Container, Func, Tail...>::type
-        >::type;
-};
 
 //take first type from the types in given templated type
 template <typename List> struct Head
@@ -161,8 +111,8 @@ template <typename List> struct Head
 };
 
 //take all but first type from the types in given template container
-template <template <typename... ContainerArgs> class Container, typename List>
-struct TailInto
+template <template <typename...> class Container, typename List>
+struct Tail
 {
     template <template <typename...> class InputContainer, typename... Elems>
     static typename variadic_algorithm::TailInto<Container, Elems...>::type
