@@ -30,6 +30,12 @@ struct RepackFunctionHelper<ReturnType (T::*)(Args...)>
     : RepackFunctionHelper<ReturnType (*)(Args...)>
 {
 };
+
+template <typename T, typename ReturnType, typename... Args>
+struct RepackFunctionHelper<ReturnType (T::*)(Args...) const>
+    : RepackFunctionHelper<ReturnType (*)(Args...)>
+{
+};
 } //namespace detail
 
 //repack function return type and argument types into given container

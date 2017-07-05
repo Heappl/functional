@@ -2,6 +2,8 @@
 #include <gmock/gmock.h>
 #include "curry.h"
 
+namespace
+{
 TEST(Curry, curryFunctionOnSimpleTypes)
 {
     struct Test{ std::string val; };
@@ -28,4 +30,5 @@ TEST(Curry, curryFunctorOnStructs)
     ASSERT_EQ(351, (imp::curry(Functor(), First{1}, Second{5}) << Third{3})());
     ASSERT_EQ(925, imp::curry(imp::curry(Functor()) << First{5}, Second{2}, Third{9})());
 }
+} //namespace
 

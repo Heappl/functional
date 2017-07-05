@@ -28,6 +28,11 @@ template <typename T, typename ReturnType, typename... Args>
 struct function_traits<ReturnType (T::*)(Args...)> : function_traits<ReturnType(Args...)>
 {
 };
+ 
+template <typename T, typename ReturnType, typename... Args>
+struct function_traits<ReturnType (T::*)(Args...) const> : function_traits<ReturnType(Args...)>
+{
+};
 
 template <typename Functor>
 struct is_invocable

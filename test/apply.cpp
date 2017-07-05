@@ -2,6 +2,9 @@
 #include <gmock/gmock.h>
 #include "apply.h"
 
+namespace
+{
+
 TEST(Apply, applyFunctionOnSimpleTypes)
 {
     struct Test{ std::string val; };
@@ -33,4 +36,5 @@ TEST(Apply, applyFunctorOnStructs)
     ASSERT_EQ(147, imp::apply(Functor(), Third{1}, First{7}, Second{4}));
     ASSERT_EQ(925, imp::apply(imp::apply(Functor()) << Third{9}, First{5}, Second{2}));
 }
+} //namespace
 
