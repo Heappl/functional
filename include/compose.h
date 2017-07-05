@@ -9,33 +9,30 @@ namespace imp
 
 namespace detail
 {
-
 template <typename...>
-struct ComposeHelper;
+struct TypeComposeHelper;
 
 template <typename FirstFunc>
-struct ComposeHelper<FirstFunc>
+struct TypeComposeHelper<FirstFunc>
 {
     using type = FirstFunc;
     static FirstFunc make(FirstFunc func) { return func; }
 };
-
-template <typename FirstFunc, typename... Rest>
-struct ComposeHelper<FirstFunc, Rest...>
+template <typename FirstFunc, typename SecondFunc, typename... Rest>
+struct TypeComposeHelper<FirstFunc, SecondFunc, Rest...>
 {
-    using next_func = typename ComposeHelper<Rest...>::type;
-    using next_args = typename RepackFunctionArgsInto<List, next_func>::type;
-    using next_return_type = typename ComposeHelper<Rest...>::return_type;
-    using first_args = typename RepackFunctionArgsInto<List, FirstFunc>::type;
     using return_type = typename function_traits<FirstFunc>::return_type;
+    using second_return_type = typename function_traits<SecondFunc>::return_type;
+    using first_args = typename RepackFunctionArgsInto<List, FirstFunc>::type;
+    using second_args = typename RepackFunctionArgsInto<List, SecondFunc>::type;
 
     template <typename T>
     struct BoundIsSame {
-        static constexpr const bool value = std::is_convertible<next_return_type, T>::value;
+        static constexpr const bool value = std::is_convertible<second_return_type, T>::value;
     };
     template <typename T>
     struct BoundIsDifferent {
-        static constexpr const bool value = not std::is_convertible<next_return_type, T>::value;
+        static constexpr const bool value = not std::is_convertible<second_return_type, T>::value;
     };
     using left_first_args = typename TakeWhile<List, BoundIsDifferent, first_args>::type;
     using right_first_args = typename Tail<
@@ -53,23 +50,25 @@ struct ComposeHelper<FirstFunc, Rest...>
             struct OpInception
             {
                 FirstFunc firstFunc;
-                next_func nextFunc;
-                OpInception(FirstFunc first, next_func next) : firstFunc(first), nextFunc(next) {}
+                SecondFunc secondFunc;
+                OpInception(FirstFunc first, SecondFunc next) : firstFunc(first), secondFunc(next) {}
 
                 return_type operator()(LeftArgs... left, NextArgs... next, RightArgs... right) const
                 {
-                    return firstFunc(left..., nextFunc(next...), right...);
+                    return firstFunc(left..., secondFunc(next...), right...);
                 }
             };
             using type = typename RepackInto<OpInception, right_first_args>::type;
         };
-        using type = typename RepackInto<OpIncept, next_args>::type;
+        using type = typename RepackInto<OpIncept, second_args>::type::type;
     };
-    using op = typename RepackInto<Op, left_first_args>::type;
+    using op = typename RepackInto<Op, left_first_args>::type::type;
+    using next = TypeComposeHelper<op, Rest...>;
+    using type = typename next::type;
 
-    static op make(FirstFunc first, Rest... rest)
+    static type make(FirstFunc first, SecondFunc second, Rest... rest)
     {
-        return op(first, next_func(rest...));
+        return next::make(op(first, second), rest...);
     }
 };
 
@@ -130,9 +129,9 @@ auto compose(Funcs... funcs)
 
 template <typename... Funcs>
 auto type_compose(Funcs... funcs)
-    -> decltype(detail::ComposeHelper<Funcs...>::make(funcs...))
+    -> decltype(detail::TypeComposeHelper<Funcs...>::make(funcs...))
 {
-    return detail::ComposeHelper<Funcs...>::make(funcs...);
+    return detail::TypeComposeHelper<Funcs...>::make(funcs...);
 }
 
 } //namespace imp

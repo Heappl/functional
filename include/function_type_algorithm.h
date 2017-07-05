@@ -1,6 +1,7 @@
 #pragma once
 
 #include "type_list.h"
+#include "type_algorithm.h"
 
 namespace imp
 {

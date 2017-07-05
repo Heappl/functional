@@ -16,5 +16,6 @@ add_executable(
     uts
     test/apply.cpp
     test/curry.cpp
+    test/compose.cpp
 )
 target_link_libraries(uts gtest gtest_main)
