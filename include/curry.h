@@ -96,9 +96,9 @@ auto curry_all(Functor func, FirstArg arg, RestArgs... rest)
  
 template <typename Functor>
 auto curry(Functor func)
-    -> decltype(curry_helper(func, &Functor::operator()))
+    -> decltype(detail::curry_helper(func, &Functor::operator()))
 {
-    return curry_helper(func, &Functor::operator());
+    return detail::curry_helper(func, &Functor::operator());
 }
 
 template <typename ReturnType, typename... Args>
